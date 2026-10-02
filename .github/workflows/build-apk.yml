@@ -28,7 +28,7 @@ jobs:
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
           echo "ANDROID_HOME=$ANDROID_HOME"
-          which sdkmanager
+
           sdkmanager --version
 
           yes | sdkmanager --licenses || true
@@ -38,34 +38,62 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Extract fixed project
+      - name: Extract project
         run: |
           rm -rf build-project
           mkdir build-project
-          unzip -q KuruvadikaranPhotoFrames_FirebaseConnected_FIXED.zip -d build-project
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+          unzip -q KuruvadikaranPhotoFrames_FirebaseConnected_FIXED.zip \
+            -d build-project
 
       - name: Find Android project
         run: |
-          find build-project -name settings.gradle.kts -o -name settings.gradle
+          echo "Searching Android project..."
+          find build-project -name "settings.gradle.kts" -o -name "settings.gradle"
+
+      - name: Fix JVM target
+        run: |
+          echo "Fixing Kotlin JVM target..."
+
+          find build-project -type f \( \
+            -name "*.gradle" \
+            -o -name "*.gradle.kts" \
+            -o -name "*.kt" \
+          \) -print0 | xargs -0 sed -i \
+            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']21["'\'']/jvmTarget = "17"/g' \
+            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']20["'\'']/jvmTarget = "17"/g' \
+            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']19["'\'']/jvmTarget = "17"/g' \
+            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']18["'\'']/jvmTarget = "17"/g' \
+            -e 's/jvmToolchain([[:space:]]*21[[:space:]]*)/jvmToolchain(17)/g'
+
+          echo "JVM target fix completed."
 
       - name: Build Debug APK
         run: |
-          PROJECT_DIR=$(dirname "$(find build-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)")
-          echo "Project: $PROJECT_DIR"
+          PROJECT_DIR=$(dirname "$(find build-project \
+            -name settings.gradle.kts \
+            -o -name settings.gradle | head -n 1)")
+
+          echo "Project directory: $PROJECT_DIR"
+
           cd "$PROJECT_DIR"
-          gradle assembleDebug --no-daemon
+
+          chmod +x gradlew
+
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Find APK
+        if: success()
         run: |
-          find build-project -type f -name "*.apk"
+          echo "APK files:"
+          find build-project -type f -name "*.apk" -print
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: KuruvadikaranPhotoFrames-APK
           path: build-project/**/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
