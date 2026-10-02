@@ -1,34 +1,37 @@
-      - name: Setup Android SDK
-        shell: bash
-        run: |
-          set -e
+name: Build Android APK
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-          SDKMANAGER=$(find "$ANDROID_HOME" \
-            -type f \
-            -name sdkmanager \
-            -perm -111 \
-            2>/dev/null | head -n 1)
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
 
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager not found"
-            find "$ANDROID_HOME" -maxdepth 5 -type f -name sdkmanager 2>/dev/null || true
-            exit 1
-          fi
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-          echo "Found sdkmanager:"
-          echo "$SDKMANAGER"
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-          SDKMANAGER_DIR=$(dirname "$SDKMANAGER")
-          export PATH="$SDKMANAGER_DIR:$PATH"
-5
-          "$SDKMANAGER" --version
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
 
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kuruvadikaran-Photo-Frame-APK
+          path: app/build/outputs/apk/debug/*.apk
