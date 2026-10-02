@@ -1,10 +1,10 @@
 name: Build Android APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
@@ -27,8 +27,6 @@ jobs:
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-
           sdkmanager --version
 
           yes | sdkmanager --licenses || true
@@ -46,52 +44,70 @@ jobs:
           unzip -q KuruvadikaranPhotoFrames_FirebaseConnected_FIXED.zip \
             -d build-project
 
-      - name: Find Android project
+      - name: Locate project
         run: |
-          echo "Searching Android project..."
-          find build-project -name "settings.gradle.kts" -o -name "settings.gradle"
+          find build-project -name settings.gradle.kts -print
 
-      - name: Fix JVM target
+      - name: Fix Kotlin JVM target
         run: |
-          echo "Fixing Kotlin JVM target..."
+          PROJECT_DIR=$(dirname "$(find build-project -name settings.gradle.kts -print -quit)")
+          echo "PROJECT_DIR=$PROJECT_DIR"
 
-          find build-project -type f \( \
-            -name "*.gradle" \
-            -o -name "*.gradle.kts" \
-            -o -name "*.kt" \
-          \) -print0 | xargs -0 sed -i \
-            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']21["'\'']/jvmTarget = "17"/g' \
-            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']20["'\'']/jvmTarget = "17"/g' \
-            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']19["'\'']/jvmTarget = "17"/g' \
-            -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'\'']18["'\'']/jvmTarget = "17"/g' \
-            -e 's/jvmToolchain([[:space:]]*21[[:space:]]*)/jvmToolchain(17)/g'
+          python3 - "$PROJECT_DIR/app/build.gradle.kts" <<'PY'
+          import sys
 
-          echo "JVM target fix completed."
+          path = sys.argv[1]
 
-      - name: Build Debug APK
+          with open(path, "r", encoding="utf-8") as f:
+              s = f.read()
+
+          addition = r'''
+          
+          kotlin {
+              jvmToolchain(17)
+          }
+          
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          '''
+
+          if "jvmToolchain(17)" not in s:
+              s += addition
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(s)
+
+          print("JVM 17 configuration added.")
+          PY
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build APK
         run: |
-          PROJECT_DIR=$(dirname "$(find build-project \
-            -name settings.gradle.kts \
-            -o -name settings.gradle | head -n 1)")
+          PROJECT_DIR=$(dirname "$(find build-project -name settings.gradle.kts -print -quit)")
 
-          echo "Project directory: $PROJECT_DIR"
+          echo "Building:"
+          echo "$PROJECT_DIR"
 
           cd "$PROJECT_DIR"
 
-          chmod +x gradlew
-
-          ./gradlew assembleDebug \
+          gradle assembleDebug \
             --no-daemon \
             --stacktrace
 
       - name: Find APK
-        if: success()
         run: |
-          echo "APK files:"
+          echo "APK:"
           find build-project -type f -name "*.apk" -print
 
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: KuruvadikaranPhotoFrames-APK
