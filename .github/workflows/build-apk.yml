@@ -23,7 +23,7 @@
 
           SDKMANAGER_DIR=$(dirname "$SDKMANAGER")
           export PATH="$SDKMANAGER_DIR:$PATH"
-
+5
           "$SDKMANAGER" --version
 
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
