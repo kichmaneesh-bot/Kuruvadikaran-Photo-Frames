@@ -1,153 +1,78 @@
-name: Build Android APK
+- name: Checkout
+    uses: actions/checkout@v4
 
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  - name: Extract FIXED Android project
+    shell: bash
+    run: |
+      set -e
 
-jobs:
-  build:
-    name: Build APK
-    runs-on: ubuntu-latest
+      ZIP_FILE=$(find . -maxdepth 2 -type f -name "KuruvadikaranPhotoFrames_FirebaseConnected_FIXED.zip" | head -n 1)
 
-    steps:
+      if [ -z "$ZIP_FILE" ]; then
+        echo "ERROR: FIXED project ZIP not found."
+        find . -maxdepth 3 -type f | sort
+        exit 1
+      fi
 
-      # 1. Checkout repository
-      - name: Checkout
-        uses: actions/checkout@v6
+      echo "Using: $ZIP_FILE"
+      mkdir -p android-project
+      unzip -o "$ZIP_FILE" -d android-project
 
-      # 2. Find and extract ZIP
-      - name: Extract Android project
-        shell: bash
-        run: |
-          set -e
+  - name: Set up JDK 17
+    uses: actions/setup-java@v4
+    with:
+      distribution: temurin
+      java-version: "17"
 
-          echo "Finding ZIP file..."
+  - name: Set up Android SDK
+    uses: android-actions/setup-android@v3
 
-          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+  - name: Install Android SDK
+    run: |
+      sdkmanager "platform-tools"
+      sdkmanager "platforms;android-35"
+      sdkmanager "build-tools;35.0.0"
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found in repository."
-            exit 1
-          fi
+  - name: Find Gradle project
+    shell: bash
+    run: |
+      set -e
 
-          echo "ZIP found: $ZIP_FILE"
+      PROJECT_DIR=$(find android-project \
+        -type f \
+        \-name "settings.gradle" -o -name "settings.gradle.kts" \ \
+        -print -quit | xargs -r dirname)
 
-          mkdir -p android-project
+      if [ -z "$PROJECT_DIR" ]; then
+        echo "ERROR: Gradle project not found."
+        find android-project -maxdepth 6 -type f | sort
+        exit 1
+      fi
 
-          unzip -o "$ZIP_FILE" -d android-project
+      echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      echo "Project: $PROJECT_DIR"
 
-          echo "Extracted files:"
-          find android-project -maxdepth 4 -type f | head -100
+  - name: Setup Gradle
+    uses: gradle/actions/setup-gradle@v4
+    with:
+      gradle-version: "8.9"
 
-      # 3. Setup Java
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
+  - name: Build Debug APK
+    shell: bash
+    run: |
+      set -e
+      cd "$PROJECT_DIR"
 
-      # 4. Setup Android SDK
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+      if [ -f "./gradlew" ]; then
+        chmod +x ./gradlew
+        ./gradlew assembleDebug --no-daemon --stacktrace
+      else
+        gradle assembleDebug --no-daemon --stacktrace
+      fi
 
-      # 5. Install Android SDK
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
-
-      # 6. Find Android project
-      - name: Find Gradle project
-        shell: bash
-        run: |
-          set -e
-
-          PROJECT_DIR=$(find android-project \
-            -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print -quit | xargs -r dirname)
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android Gradle project not found."
-            echo "Searching files..."
-            find android-project -type f | head -200
-            exit 1
-          fi
-
-          echo "Android project found:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      # 7. Show project
-      - name: Check project
-        run: |
-          echo "Project directory:"
-          echo "$PROJECT_DIR"
-
-          cd "$PROJECT_DIR"
-
-          echo "Project files:"
-          ls -la
-
-      # 8. Setup Gradle
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: '8.9'
-
-      # 9. Fix Java / Kotlin
-      - name: Fix JVM target
-        shell: bash
-        run: |
-          set -e
-
-          find "$PROJECT_DIR" \
-            -name "build.gradle.kts" \
-            -exec sed -i \
-            's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' {} +
-
-          find "$PROJECT_DIR" \
-            -name "build.gradle.kts" \
-            -exec sed -i \
-            's/jvmTarget = "1.8"/jvmTarget = "17"/g' {} +
-
-      # 10. Build APK
-      - name: Build Debug APK
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "Building APK..."
-
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
-
-      # 11. Find APK
-      - name: Find APK
-        shell: bash
-        run: |
-          echo "Searching for APK..."
-
-          find "$PROJECT_DIR" \
-            -type f \
-            -name "*.apk" \
-            -print
-
-      # 12. Upload APK
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kuruvadikaran-Photo-Frame-APK
-          path: |
-            **/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+  - name: Upload APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: Kuruvadikaran-Photo-Frame-APK
+      path: "**/build/outputs/apk/debug/*.apk"
+      if-no-files-found: error
