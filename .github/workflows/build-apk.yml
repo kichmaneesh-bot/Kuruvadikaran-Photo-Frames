@@ -22,55 +22,50 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.10.2'
-
-      - name: Setup Android SDK
-        run: |
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
-
-      - name: Find Android project ZIP
-        run: |
-          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: Android project ZIP not found"
-            find . -maxdepth 3 -type f
-            exit 1
-          fi
-
-          echo "Found ZIP: $ZIP_FILE"
-          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
       - name: Extract Android project
+        shell: bash
         run: |
-          rm -rf project
-          mkdir project
-          unzip -q "$ZIP_FILE" -d project
+          set -e
 
-          echo "Extracted files:"
-          find project -maxdepth 3 -type f | head -100
+          mkdir -p extracted
+
+          ZIP_FILE=$(find . -maxdepth 3 -type f -name "*.zip" | head -n 1)
+
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Found ZIP: $ZIP_FILE"
+            unzip -q "$ZIP_FILE" -d extracted
+          else
+            echo "No ZIP found. Using repository directly."
+          fi
 
       - name: Find Android project folder
+        shell: bash
         run: |
-          SETTINGS_FILE=$(find project -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)
+          set -e
+
+          SETTINGS_FILE=$(find . \
+            -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -not -path "./.git/*" \
+            | head -n 1)
 
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: settings.gradle(.kts) not found"
-            find project -maxdepth 5 -type f
+            echo "ERROR: settings.gradle or settings.gradle.kts not found."
+            echo "Files in repository:"
+            find . -maxdepth 4 -type f | head -100
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS_FILE")
 
-          echo "Android project found at: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
+          echo "Android project found at:"
+          echo "$PROJECT_DIR"
+
       - name: Check Android project
+        shell: bash
         run: |
           cd "$PROJECT_DIR"
 
@@ -78,27 +73,34 @@ jobs:
           ls -la
 
           echo "App folder:"
-          ls -la app
+          ls -la app || true
+
+          echo "Gradle version:"
+          gradle --version
 
       - name: Build Debug APK
+        shell: bash
         run: |
           cd "$PROJECT_DIR"
+
+          echo "Building APK..."
+
           gradle assembleDebug --stacktrace
 
       - name: Find APK
+        shell: bash
         run: |
-          APK_FILE=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
+          echo "Searching for APK..."
 
-          if [ -z "$APK_FILE" ]; then
-            echo "ERROR: APK was not generated"
-            exit 1
-          fi
-
-          echo "APK found: $APK_FILE"
-          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Kuruvadikaran-Photo-Frames-APK
-          path: ${{ env.APK_FILE }}
+          path: |
+            ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
