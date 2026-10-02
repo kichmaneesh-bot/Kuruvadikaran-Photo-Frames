@@ -37,14 +37,26 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Fix Java and Kotlin JVM target
+      - name: Create JVM 17 configuration
         run: |
-          find . -name "build.gradle.kts" -exec sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' {} +
-          find . -name "build.gradle.kts" -exec sed -i 's/jvmTarget = "1.8"/jvmTarget = "17"/g' {} +
+          cat > force-jvm.gradle <<'EOF'
+          allprojects {
+              tasks.withType(JavaCompile).configureEach {
+                  options.release = 17
+              }
+
+              tasks.matching {
+                  it.name == "compileDebugKotlin" ||
+                  it.name == "compileReleaseKotlin"
+              }.configureEach {
+                  kotlinOptions.jvmTarget = "17"
+              }
+          }
+          EOF
 
       - name: Build APK
         run: |
-          gradle --no-daemon assembleDebug
+          gradle --no-daemon -I force-jvm.gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
