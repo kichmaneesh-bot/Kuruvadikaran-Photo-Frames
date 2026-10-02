@@ -17,7 +17,7 @@ jobs:
 
       - name: Extract Android project
         run: |
-          unzip -o KuruvadikaranPhotoFrames_FirebaseConnected.zip
+          unzip -o KuruvadikaranPhotoFrames_FirebaseConnected_FIXED.zip
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
