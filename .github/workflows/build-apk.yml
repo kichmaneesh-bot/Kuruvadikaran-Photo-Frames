@@ -21,10 +21,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK packages
+      - name: Setup Android SDK
         run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          which sdkmanager
+          sdkmanager --version
+
           yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Extract fixed project
         run: |
@@ -37,13 +49,23 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Build Debug APK
-        working-directory: build-project/KuruvadikaranPhotoFramesFirebase
+      - name: Find Android project
         run: |
+          find build-project -name settings.gradle.kts -o -name settings.gradle
+
+      - name: Build Debug APK
+        run: |
+          PROJECT_DIR=$(dirname "$(find build-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)")
+          echo "Project: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
           gradle assembleDebug --no-daemon
+
+      - name: Find APK
+        run: |
+          find build-project -type f -name "*.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: KuruvadikaranPhotoFrames-APK
-          path: build-project/KuruvadikaranPhotoFramesFirebase/app/build/outputs/apk/debug/app-debug.apk
+          path: build-project/**/app/build/outputs/apk/debug/*.apk
