@@ -37,38 +37,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Fix Java and Kotlin to JVM 17
-        run: |
-          find . -name "*.gradle.kts" -type f -exec sed -i \
-            -e 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' \
-            -e 's/JavaVersion.VERSION_8/JavaVersion.VERSION_17/g' \
-            -e 's/jvmTarget = "1.8"/jvmTarget = "17"/g' \
-            -e 's/sourceCompatibility = JavaVersion.VERSION_1_8/sourceCompatibility = JavaVersion.VERSION_17/g' \
-            -e 's/targetCompatibility = JavaVersion.VERSION_1_8/targetCompatibility = JavaVersion.VERSION_17/g' \
-            {} +
-
-      - name: Create JVM 17 Gradle configuration
-        run: |
-          cat > force-jvm.gradle <<'EOF'
-          allprojects {
-              tasks.withType(JavaCompile).configureEach {
-                  sourceCompatibility = "17"
-                  targetCompatibility = "17"
-              }
-
-              tasks.matching {
-                  it.name.contains("Kotlin")
-              }.configureEach {
-                  if (hasProperty("kotlinOptions")) {
-                      kotlinOptions.jvmTarget = "17"
-                  }
-              }
-          }
-          EOF
-
       - name: Build APK
         run: |
-          gradle --no-daemon -I force-jvm.gradle assembleDebug
+          gradle --no-daemon assembleDebug -Pkotlin.jvm.target.validation.mode=warning
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
