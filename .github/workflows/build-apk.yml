@@ -9,7 +9,8 @@ on:
 jobs:
   build:
   - name: Fix JVM target
-  run: |
+  run: |name: Build APK
+runs-on: ubuntu-latest
     find . -name "*.gradle.kts" -exec sed -i 's/VERSION_1_8/VERSION_17/g; s/"1.8"/"17"/g' {} +
     name: Build APK
     runs-on: ubuntu-latest
